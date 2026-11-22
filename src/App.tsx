@@ -10,6 +10,7 @@ import type {
   HistoryEntry,
   NixAnalysis,
   SampleImage,
+  ThinkingDuration,
 } from "./types/nix";
 import { fileToActiveImage, urlToActiveImage } from "./utils/imageHelpers";
 
@@ -45,6 +46,9 @@ export default function App() {
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<ActiveImage | null>(null);
   const [mode, setMode] = useState<AnalysisMode>("overview");
+  const [highThinking, setHighThinking] = useState(false);
+  const [thinkingDuration, setThinkingDuration] = useState<ThinkingDuration>("medium");
+  const [lastAnalyzedThinkingKey, setLastAnalyzedThinkingKey] = useState<string | null>(null);
   const [customFocus, setCustomFocus] = useState("");
   const [analysis, setAnalysis] = useState<NixAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -57,11 +61,15 @@ export default function App() {
     saveStoredHistory(history);
   }, [history]);
 
+  const currentThinkingKey = highThinking ? "xhigh" : thinkingDuration;
+
   const runAnalysisForImage = useCallback(
     async (
       targetImage: ActiveImage,
       targetMode: AnalysisMode,
-      focusText: string
+      focusText: string,
+      useHighThinking: boolean,
+      duration: ThinkingDuration
     ) => {
       setIsAnalyzing(true);
       setError(null);
@@ -76,6 +84,8 @@ export default function App() {
             mimeType: targetImage.metadata.mimeType,
             mode: targetMode,
             customFocus: focusText,
+            highThinking: useHighThinking,
+            thinkingDuration: duration,
           }),
         });
 
@@ -86,12 +96,15 @@ export default function App() {
 
         const nextAnalysis = payload.analysis as NixAnalysis;
         setAnalysis(nextAnalysis);
+        setLastAnalyzedThinkingKey(useHighThinking ? "xhigh" : duration);
 
         const newEntryId = `entry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const newEntry: HistoryEntry = {
           id: newEntryId,
           createdAt: Date.now(),
           mode: targetMode,
+          highThinking: useHighThinking,
+          thinkingDuration: duration,
           image: targetImage,
           analysis: nextAnalysis,
           chatHistory: [],
@@ -121,12 +134,12 @@ export default function App() {
         setAnalysis(null);
         setActiveEntryId(null);
         setChatMessages([]);
-        await runAnalysisForImage(loaded, mode, customFocus);
+        await runAnalysisForImage(loaded, mode, customFocus, highThinking, thinkingDuration);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to open image.");
       }
     },
-    [customFocus, mode, runAnalysisForImage]
+    [customFocus, highThinking, mode, runAnalysisForImage, thinkingDuration]
   );
 
   const handleSelectSample = useCallback(
@@ -141,18 +154,23 @@ export default function App() {
         setAnalysis(null);
         setActiveEntryId(null);
         setChatMessages([]);
-        await runAnalysisForImage(loaded, nextMode, "");
+        await runAnalysisForImage(loaded, nextMode, "", highThinking, thinkingDuration);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load sample.");
       }
     },
-    [runAnalysisForImage]
+    [highThinking, runAnalysisForImage, thinkingDuration]
   );
 
   const handleSelectHistoryEntry = useCallback((entry: HistoryEntry) => {
+    const entryHighThinking = Boolean(entry.highThinking);
+    const entryDuration: ThinkingDuration = entry.thinkingDuration ?? "medium";
     setActiveEntryId(entry.id);
     setActiveImage(entry.image);
     setMode(entry.mode);
+    setHighThinking(entryHighThinking);
+    setThinkingDuration(entryDuration);
+    setLastAnalyzedThinkingKey(entryHighThinking ? "xhigh" : entryDuration);
     setAnalysis(entry.analysis);
     setChatMessages(entry.chatHistory || []);
     setError(null);
@@ -172,6 +190,7 @@ export default function App() {
     setActiveEntryId(null);
     setActiveImage(null);
     setAnalysis(null);
+    setLastAnalyzedThinkingKey(null);
     setChatMessages([]);
     setCustomFocus("");
     setError(null);
@@ -213,6 +232,8 @@ export default function App() {
             analysisContext: analysis
               ? `${analysis.title}: ${analysis.summary}`
               : undefined,
+            highThinking,
+            thinkingDuration,
           }),
         });
 
@@ -286,7 +307,7 @@ export default function App() {
         setIsChatStreaming(false);
       }
     },
-    [activeEntryId, activeImage, analysis, chatMessages, isChatStreaming]
+    [activeEntryId, activeImage, analysis, chatMessages, highThinking, isChatStreaming, thinkingDuration]
   );
 
   useEffect(() => {
@@ -359,7 +380,7 @@ export default function App() {
             type="button"
             onClick={() => {
               setMode("ocr");
-              if (activeImage) runAnalysisForImage(activeImage, "ocr", customFocus);
+              if (activeImage) runAnalysisForImage(activeImage, "ocr", customFocus, highThinking, thinkingDuration);
             }}
             className="hover:text-neutral-900 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
@@ -369,7 +390,7 @@ export default function App() {
             type="button"
             onClick={() => {
               setMode("design");
-              if (activeImage) runAnalysisForImage(activeImage, "design", customFocus);
+              if (activeImage) runAnalysisForImage(activeImage, "design", customFocus, highThinking, thinkingDuration);
             }}
             className="hover:text-neutral-900 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
@@ -440,6 +461,15 @@ export default function App() {
                 activeImage={activeImage}
                 mode={mode}
                 onModeChange={setMode}
+                highThinking={highThinking}
+                onHighThinkingChange={setHighThinking}
+                thinkingDuration={thinkingDuration}
+                onThinkingDurationChange={(nextDuration) => {
+                  setThinkingDuration(nextDuration);
+                  setHighThinking(false);
+                }}
+                currentThinkingKey={currentThinkingKey}
+                lastAnalyzedThinkingKey={lastAnalyzedThinkingKey}
                 customFocus={customFocus}
                 onCustomFocusChange={setCustomFocus}
                 analysis={analysis}
@@ -450,7 +480,9 @@ export default function App() {
                     runAnalysisForImage(
                       activeImage,
                       overrideMode ?? mode,
-                      customFocus
+                      customFocus,
+                      highThinking,
+                      thinkingDuration
                     );
                   }
                 }}

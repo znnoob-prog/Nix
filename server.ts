@@ -3,7 +3,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import type { GenerateContentResponse } from "@google/genai";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,11 +20,15 @@ const ALLOWED_MIME_TYPES = new Set([
 
 type AnalysisMode = "overview" | "ocr" | "design" | "objects";
 
+type ThinkingDuration = "low" | "medium" | "high";
+
 interface AnalyzeRequestBody {
   imageBase64?: string;
   mimeType?: string;
   mode?: AnalysisMode;
   customFocus?: string;
+  highThinking?: boolean;
+  thinkingDuration?: ThinkingDuration;
 }
 
 interface ChatHistoryItem {
@@ -38,6 +42,26 @@ interface ChatRequestBody {
   question?: string;
   history?: ChatHistoryItem[];
   analysisContext?: string;
+  highThinking?: boolean;
+  thinkingDuration?: ThinkingDuration;
+}
+
+function resolveThinkingLevel(
+  highThinking: boolean,
+  duration?: ThinkingDuration
+): ThinkingLevel {
+  if (highThinking) {
+    return ThinkingLevel.XHIGH;
+  }
+  switch (duration) {
+    case "low":
+      return ThinkingLevel.LOW;
+    case "high":
+      return ThinkingLevel.HIGH;
+    case "medium":
+    default:
+      return ThinkingLevel.MEDIUM;
+  }
 }
 
 function getGenAIClient(): GoogleGenAI {
@@ -207,6 +231,11 @@ async function startServer(): Promise<void> {
       const ai = getGenAIClient();
       const mimeType = normalizeMimeType(rawMime);
       const prompt = buildModePrompt(mode, body.customFocus);
+      const highThinking = Boolean(body?.highThinking);
+      const thinkingLevel = resolveThinkingLevel(
+        highThinking,
+        body?.thinkingDuration
+      );
 
       const response: GenerateContentResponse = await withRetry(() =>
         ai.models.generateContent({
@@ -224,6 +253,7 @@ async function startServer(): Promise<void> {
           },
           config: {
             systemInstruction: NIX_SYSTEM_INSTRUCTION,
+            thinkingConfig: { thinkingLevel },
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -326,7 +356,7 @@ async function startServer(): Promise<void> {
       }
 
       const parsed = JSON.parse(jsonText);
-      res.json({ analysis: parsed, model: "gemini-4-hydrogen" });
+      res.json({ analysis: parsed, model: "gemini-4-hydrogen", highThinking });
     } catch (error) {
       const mapped = mapApiError(error);
       res.status(mapped.status).json({ error: mapped.message });
@@ -356,6 +386,11 @@ async function startServer(): Promise<void> {
       const ai = getGenAIClient();
       const mimeType = normalizeMimeType(rawMime);
       const cleanBase64 = stripDataUrlPrefix(rawBase64);
+      const highThinking = Boolean(body?.highThinking);
+      const thinkingLevel = resolveThinkingLevel(
+        highThinking,
+        body?.thinkingDuration
+      );
 
       const historyLines = Array.isArray(body.history)
         ? body.history
@@ -393,6 +428,7 @@ async function startServer(): Promise<void> {
         },
         config: {
           systemInstruction: NIX_SYSTEM_INSTRUCTION,
+          thinkingConfig: { thinkingLevel },
         },
       });
 

@@ -16,6 +16,7 @@ import type {
   AnalysisMode,
   ChatMessage,
   NixAnalysis,
+  ThinkingDuration,
 } from "../types/nix";
 import { buildMarkdownReport } from "../utils/imageHelpers";
 
@@ -23,6 +24,12 @@ interface AnalysisPanelProps {
   activeImage: ActiveImage | null;
   mode: AnalysisMode;
   onModeChange: (mode: AnalysisMode) => void;
+  highThinking: boolean;
+  onHighThinkingChange: (enabled: boolean) => void;
+  thinkingDuration: ThinkingDuration;
+  onThinkingDurationChange: (duration: ThinkingDuration) => void;
+  currentThinkingKey: string;
+  lastAnalyzedThinkingKey: string | null;
   customFocus: string;
   onCustomFocusChange: (focus: string) => void;
   analysis: NixAnalysis | null;
@@ -41,10 +48,27 @@ const MODES: Array<{ id: AnalysisMode; label: string; icon: typeof Eye }> = [
   { id: "objects", label: "Object Scan", icon: Layers },
 ];
 
+const DURATION_STOPS: Array<{
+  value: number;
+  id: ThinkingDuration;
+  label: string;
+  description: string;
+}> = [
+  { value: 0, id: "low", label: "Short", description: "Minimal reasoning for fastest turnaround." },
+  { value: 1, id: "medium", label: "Standard", description: "Balanced reasoning duration and detail." },
+  { value: 2, id: "high", label: "Extended", description: "Longer reasoning pass for finer details." },
+];
+
 export function AnalysisPanel({
   activeImage,
   mode,
   onModeChange,
+  highThinking,
+  onHighThinkingChange,
+  thinkingDuration,
+  onThinkingDurationChange,
+  currentThinkingKey,
+  lastAnalyzedThinkingKey,
   customFocus,
   onCustomFocusChange,
   analysis,
@@ -193,8 +217,107 @@ export function AnalysisPanel({
             onClick={() => onRunAnalysis()}
             className="px-4 py-2 text-sm font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] disabled:bg-neutral-300 disabled:cursor-not-allowed rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
-            {isAnalyzing ? "Analyzing..." : "Analyze Image"}
+            {isAnalyzing
+              ? "Analyzing..."
+              : analysis && lastAnalyzedThinkingKey !== currentThinkingKey
+              ? "Re-analyze"
+              : "Analyze Image"}
           </button>
+        </div>
+
+        <div className="pt-2.5 border-t border-neutral-100 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <span
+                id="high-thinking-label"
+                className="text-xs font-medium text-neutral-800"
+              >
+                High Thinking
+              </span>
+              <p className="text-[11px] text-neutral-500">
+                {highThinking
+                  ? "Maximum reasoning depth enabled for higher visual accuracy."
+                  : "Enable for maximum depth, or use the duration slider below."}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={highThinking}
+              aria-labelledby="high-thinking-label"
+              disabled={isAnalyzing}
+              onClick={() => onHighThinkingChange(!highThinking)}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB] ${
+                highThinking
+                  ? "bg-[#2563EB] border-[#2563EB]"
+                  : "bg-neutral-200 border-neutral-300"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`inline-block h-4 w-4 rounded-full bg-white shadow-xs transition-transform ${
+                  highThinking ? "translate-x-5.5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div
+            className={`space-y-1.5 transition-opacity ${
+              highThinking ? "opacity-55" : "opacity-100"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="thinking-duration-slider"
+                className="text-xs font-medium text-neutral-800"
+              >
+                Thinking Duration
+              </label>
+              <span className="text-[11px] font-mono tabular-nums text-neutral-500">
+                {highThinking
+                  ? "Overridden by High Thinking"
+                  : DURATION_STOPS.find((s) => s.id === thinkingDuration)?.label}
+              </span>
+            </div>
+            <input
+              id="thinking-duration-slider"
+              type="range"
+              min={0}
+              max={2}
+              step={1}
+              disabled={isAnalyzing}
+              value={
+                DURATION_STOPS.find((s) => s.id === thinkingDuration)?.value ?? 1
+              }
+              onChange={(e) => {
+                const idx = Number(e.target.value);
+                const stop = DURATION_STOPS[idx] ?? DURATION_STOPS[1];
+                onThinkingDurationChange(stop.id);
+              }}
+              className="w-full h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-[#2563EB] disabled:cursor-not-allowed"
+            />
+            <div className="flex items-center justify-between text-[11px] text-neutral-500">
+              {DURATION_STOPS.map((stop) => {
+                const isSelected = !highThinking && thinkingDuration === stop.id;
+                return (
+                  <button
+                    key={stop.id}
+                    type="button"
+                    disabled={isAnalyzing}
+                    onClick={() => onThinkingDurationChange(stop.id)}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? "font-semibold text-[#2563EB]"
+                        : "hover:text-neutral-800"
+                    }`}
+                  >
+                    {stop.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -48,10 +48,14 @@ export interface ActiveImage {
   metadata: ImageMetadata;
 }
 
+export type ThinkingDuration = "low" | "medium" | "high";
+
 export interface HistoryEntry {
   id: string;
   createdAt: number;
   mode: AnalysisMode;
+  highThinking?: boolean;
+  thinkingDuration?: ThinkingDuration;
   image: ActiveImage;
   analysis: NixAnalysis;
   chatHistory: ChatMessage[];
