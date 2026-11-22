@@ -1,0 +1,6 @@
+{
+  "name": "Nix",
+  "description": "Visual intelligence workspace powered by Gemini AI for clear, structured image analysis and interactive Q&A.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
